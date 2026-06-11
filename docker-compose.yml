@@ -1,0 +1,16 @@
+services:
+  baijihu:
+    build: .
+    container_name: baijihu
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # 变量 = UUID + 绑定域名
+      UUID: "86c50e3a-5b87-49dd-bd20-03c7f2735e40"
+      PASSWORD: "change-me"
+      # DOMAIN: "your.domain.com"      # 自定义域名（反代到本容器）后填写
+      # PROXYIP: ""                     # 落地反代IP，可留空
+      # PREFERRED_IPS: "104.16.0.0#优选,icook.hk#CF"
+      # TUIC_PASSWORD: ""              # 留空则用 UUID
+      PORT: "8787"

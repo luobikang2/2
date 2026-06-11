@@ -1,0 +1,30 @@
+name = "baijihu"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# ====== 必填变量 ======
+# UUID：节点用户ID（变量 = UUID + 绑定域名）。也可在 Cloudflare 控制台设置。
+[vars]
+UUID = "86c50e3a-5b87-49dd-bd20-03c7f2735e40"
+# PASSWORD：操作面板登录密码（若使用 D1/KV 可省略，由数据库管理）
+PASSWORD = "admin"
+# DOMAIN：绑定域名（留空则自动使用访问域名）。如 your.pages.dev / your.workers.dev / 自定义域
+# DOMAIN = ""
+# PROXYIP：反代落地IP，部分目标直连失败时回退。可留空
+# PROXYIP = ""
+# PREFERRED_IPS：优选IP/域名，逗号或换行分隔，可写 "addr#备注"
+# PREFERRED_IPS = "104.16.0.0#优选,icook.hk#CF"
+# TUIC_PASSWORD：TUIC 节点密码，留空则用 UUID
+# TUIC_PASSWORD = ""
+
+# ====== 可选：D1 数据库（在线管理密码） ======
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "baijihu"
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# ====== 可选：KV 命名空间（在线管理密码） ======
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
