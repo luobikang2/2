@@ -90,6 +90,19 @@ vpn.example.com {
 任意支持 Node + 出站 TCP 的容器平台（如 Fly.io、Railway、Render、自建 K8s）均可用本 Dockerfile 部署；
 平台需放通 WebSocket。变量通过平台的环境变量面板配置。
 
+## 八、WireGuard（WARP）与抗探测变量
+
+```toml
+# 抗探测（均可选）
+# ADMIN_PATH   隐藏面板到私密路径，如 "/mysecret"
+# FAKE_WEBSITE 未授权访问反代到的正常网站，如 "https://example.com"
+# WS_PATH      仅该路径接受 VLESS WebSocket
+```
+
+- WireGuard 节点无需额外变量：登录面板 →「WireGuard (WARP)」→ 生成，即时注册 Cloudflare WARP 并产出 `.conf` / sing-box / `wireguard://`。
+- 开启 `ADMIN_PATH` 后，登录入口为 `https://<域名><ADMIN_PATH>`（如 `https://x.pages.dev/mysecret`）。
+- 开启 `FAKE_WEBSITE` 后，根路径与未知路径会被反代成该网站，达到伪装效果。
+
 ## 常见问题
 
 - **登录不进去**：确认 `PASSWORD` 已设置；若绑定 D1/KV，确认其中已写入 `password`。默认密码为 `admin`，请尽快修改。

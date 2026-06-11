@@ -60,7 +60,7 @@ padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:non
 
 const QR_CDN = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
 
-export function loginPage(error = '') {
+export function loginPage(error = '', base = '') {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>白极狐 · 登录</title><style>${STYLE}</style></head>
@@ -72,7 +72,7 @@ export function loginPage(error = '') {
   </div>
   <div class="banner">北 极 欢 迎 你</div>
   ${error ? `<div style="color:var(--err);text-align:center;margin-top:10px">${error}</div>` : ''}
-  <form method="POST" action="/login">
+  <form method="POST" action="${base}/login">
     <label>登录密码</label>
     <input type="password" name="password" placeholder="请输入操作面板密码" required autofocus>
     <div class="row" style="margin-top:16px">
@@ -98,7 +98,7 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 </body></html>`;
 }
 
-export function panelPage({ uuid, host, passwordBackend }) {
+export function panelPage({ uuid, host, passwordBackend, base = '' }) {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>白极狐 · 操作面板</title><style>${STYLE}</style>
@@ -109,7 +109,7 @@ export function panelPage({ uuid, host, passwordBackend }) {
     <div class="brand"><div class="logo">🦊</div>
       <div><h1>白极狐</h1><div class="banner" style="text-align:left;margin:2px 0 0">北 极 欢 迎 你</div></div>
     </div>
-    <a class="btn ghost sm" href="/logout">退出登录</a>
+    <a class="btn ghost sm" href="${base}/logout">退出登录</a>
   </div>
 
   <div class="card">
@@ -123,6 +123,7 @@ export function panelPage({ uuid, host, passwordBackend }) {
 
   <div class="tabs">
     <div class="tab active" data-pane="nodes" onclick="tab(this)">节点 (VLESS/TUIC)</div>
+    <div class="tab" data-pane="wg" onclick="tab(this)">WireGuard (WARP)</div>
     <div class="tab" data-pane="custom" onclick="tab(this)">自定义节点模板</div>
     <div class="tab" data-pane="docs" onclick="tab(this)">配置说明</div>
     <div class="tab" data-pane="settings" onclick="tab(this)">设置</div>
@@ -137,6 +138,18 @@ export function panelPage({ uuid, host, passwordBackend }) {
         <button class="btn ghost" onclick="testAll()">测试全部连通/延迟</button>
       </div>
       <div id="nodeList"></div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-wg">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div style="flex:1"><label>WARP UDP 端点（调用 CF 的 UDP）</label>
+          <select id="wgEndpoint"></select></div>
+        <button onclick="genWarp()">生成 WireGuard 节点</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:8px">通过 Cloudflare WARP（基于 WireGuard 的 UDP 服务）实时注册账号并生成可用节点。客户端：WireGuard 官方 / NekoBox / sing-box / Hiddify。</div>
+      <div id="wgResult"></div>
     </div>
   </div>
 
@@ -168,6 +181,7 @@ export function panelPage({ uuid, host, passwordBackend }) {
 
 <script>
 const HOST=${JSON.stringify(host)};
+const BASE=${JSON.stringify(base)};
 function tab(el){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
 document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
 document.getElementById('pane-'+el.dataset.pane).classList.add('active');}
@@ -188,7 +202,7 @@ function renderSub(){
 async function loadNodes(){
   const uuid=uuidVal();const count=document.getElementById('inCount').value;
   document.getElementById('curUuid').textContent=uuid;renderSub();
-  const r=await fetch('/api/nodes?uuid='+encodeURIComponent(uuid)+'&count='+count);
+  const r=await fetch(BASE+'/api/nodes?uuid='+encodeURIComponent(uuid)+'&count='+count);
   const data=await r.json();
   const all=[...data.vless,...data.tuic];
   document.getElementById('nodeList').innerHTML=all.map((n,i)=>nodeHtml(n,i)).join('');
@@ -207,7 +221,7 @@ function nodeHtml(n,i){
 async function testOne(i){
   const n=window.__nodes[i];const el=document.getElementById('lat'+i);el.textContent='测试中…';
   try{
-    const r=await fetch('/api/test?target='+encodeURIComponent(n.address+':'+n.port));
+    const r=await fetch(BASE+'/api/test?target='+encodeURIComponent(n.address+':'+n.port));
     const d=await r.json();
     el.textContent=d.ok?(d.latency+' ms'):'失败';
     el.style.color=d.ok?(d.latency<300?'var(--ok)':'var(--warn)'):'var(--err)';
@@ -219,8 +233,31 @@ function showQr(i){const n=window.__nodes[i];document.getElementById('qrCard').s
   const box=document.getElementById('qr');box.innerHTML='';new QRCode(box,{text:n.link,width:200,height:200});}
 function closeQr(){document.getElementById('qrCard').style.display='none';}
 
+const WARP_ENDPOINTS=['engage.cloudflareclient.com:2408','162.159.192.1:2408','162.159.193.10:2408','188.114.96.1:2408','188.114.97.1:2408'];
+document.getElementById('wgEndpoint').innerHTML=WARP_ENDPOINTS.map(e=>'<option>'+e+'</option>').join('');
+async function genWarp(){
+  const ep=document.getElementById('wgEndpoint').value;const box=document.getElementById('wgResult');
+  box.innerHTML='<div class="muted" style="margin-top:10px">正在注册 WARP 账号并生成…</div>';
+  try{
+    const r=await fetch(BASE+'/api/warp?endpoint='+encodeURIComponent(ep));const d=await r.json();
+    if(!d.ok){box.innerHTML='<div style="color:var(--err);margin-top:10px">生成失败：'+(d.error||'')+'</div>';return;}
+    window.__wg=d;
+    box.innerHTML=
+      '<div class="node" style="margin-top:12px"><div class="top"><b>WireGuard 配置 (.conf)</b>'+
+      '<div class="row"><button class="btn ghost sm" onclick="copyText(window.__wg.conf)">复制conf</button>'+
+      '<button class="btn ghost sm" onclick="copyText(window.__wg.link)">复制链接</button>'+
+      '<button class="btn ghost sm" onclick="wgQr()">二维码</button></div></div>'+
+      '<pre>'+d.conf+'</pre></div>'+
+      '<div class="node"><div class="top"><b>sing-box outbound</b><button class="btn ghost sm" onclick="copyText(window.__wg.singbox)">复制</button></div><pre>'+d.singbox+'</pre></div>'+
+      '<div class="node"><b>wireguard:// 链接</b><div class="lk">'+d.link+'</div></div>';
+    toast('已生成 WireGuard 节点');
+  }catch(e){box.innerHTML='<div style="color:var(--err)">请求失败</div>';}
+}
+function wgQr(){document.getElementById('qrCard').style.display='block';
+  const box=document.getElementById('qr');box.innerHTML='';new QRCode(box,{text:window.__wg.conf,width:220,height:220});}
+
 async function loadTemplates(){
-  const r=await fetch('/api/templates?uuid='+encodeURIComponent(uuidVal()));
+  const r=await fetch(BASE+'/api/templates?uuid='+encodeURIComponent(uuidVal()));
   const tpls=await r.json();
   document.getElementById('tplBox').innerHTML=tpls.map(t=>
     '<div class="node"><div class="top"><b>'+t.title+'</b><button class="btn ghost sm" onclick="copyText(\\''+t.example.replace(/'/g,"\\\\'")+'\\')">复制模板</button></div>'+
@@ -245,7 +282,18 @@ UUID: 你的 UUID   password: 你的 UUID(或自定义)
 alpn: h3   congestion_control: bbr   udp_relay_mode: native
 内核: 必须使用 sing-box（Xray 不支持 TUIC）</pre>
 <div class="muted">⚠️ Cloudflare Workers/Pages 不支持 QUIC 入站，TUIC 节点需配合自建/第三方 QUIC 后端；订阅里提供 TUIC 链接以便兼容多协议客户端。</div>
-<h4>③ 国内访问 Google 等外网</h4>
+<h4>③ WireGuard（WARP，调用 CF 的 UDP）</h4>
+<pre>在「WireGuard (WARP)」标签点「生成」→ 得到 .conf / sing-box / wireguard:// 链接
+客户端: WireGuard 官方App / NekoBox / sing-box / Hiddify
+端点(Endpoint): engage.cloudflareclient.com:2408 或 162.159.192.1:2408 (CF 的 UDP)
+MTU: 1280   AllowedIPs: 0.0.0.0/0, ::/0   DNS: 1.1.1.1
+WARP 为基于 WireGuard 的 UDP 服务，节点真实可用；如需解锁更多可叠加 WARP+。</pre>
+<h4>④ 抗探测/防侦测</h4>
+<pre>ADMIN_PATH=/你的私密路径   隐藏登录面板，根路径不暴露
+FAKE_WEBSITE=https://example.com   未授权访问反代到正常网站(防主动探测)
+WS_PATH=/你的ws路径   仅该路径接受 WS，其它伪装
+节点指纹 fp=randomized；建议用自定义域名 + 优选IP</pre>
+<h4>⑤ 国内访问 Google 等外网</h4>
 <pre>1) 部署本项目到 Cloudflare（Pages/Workers）
 2) 设置 UUID 环境变量；如有自定义域名解析到 CF 更稳
 3) 导入「VLESS 订阅」到客户端，选延迟低的节点
@@ -254,7 +302,7 @@ document.getElementById('docsBox').innerHTML=DOCS;
 
 async function changePw(){
   const pw=document.getElementById('newPw').value;if(!pw)return toast('请输入新密码');
-  const r=await fetch('/api/password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:pw})});
+  const r=await fetch(BASE+'/api/password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:pw})});
   const d=await r.json();toast(d.ok?('已保存到 '+d.backend):(d.error||'保存失败'));
 }
 

@@ -17,6 +17,13 @@ PASSWORD = "admin"
 # PREFERRED_IPS = "104.16.0.0#优选,icook.hk#CF"
 # TUIC_PASSWORD：TUIC 节点密码，留空则用 UUID
 # TUIC_PASSWORD = ""
+# ===== 抗探测/防侦测（均可选）=====
+# ADMIN_PATH：把登录面板隐藏到私密路径，根路径不再暴露面板。如 "/mysecret"
+# ADMIN_PATH = ""
+# FAKE_WEBSITE：未授权/普通访问反代到的正常网站，用于防主动探测伪装
+# FAKE_WEBSITE = "https://example.com"
+# WS_PATH：仅该路径接受 VLESS WebSocket，其它路径走伪装。如 "/mytunnel"
+# WS_PATH = ""
 
 # ====== 可选：D1 数据库（在线管理密码） ======
 # [[d1_databases]]

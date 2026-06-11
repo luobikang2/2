@@ -7,6 +7,8 @@
 - **VLESS（主力）**：VLESS + WebSocket + TLS，在 Cloudflare Workers/Pages 上**真正可用**。
 - **TUIC（辅助）**：生成标准 TUIC 链接，兼容 sing-box 等客户端。
   > ⚠️ TUIC 基于 QUIC/UDP，**Cloudflare Workers/Pages 不支持 QUIC 入站**，TUIC 节点需配合支持 QUIC 的后端（自建/VPS，见 Docker 部署）。订阅中提供 TUIC 链接是为了多协议客户端兼容。
+- **WireGuard（WARP，调用 CF 的 UDP）**：面板一键注册 Cloudflare WARP（基于 WireGuard 的 UDP 服务）账号，生成**真实可用**的 `.conf` / sing-box / `wireguard://` 节点与二维码。
+- **抗探测/防侦测**：可隐藏面板路径、未授权访问反代到正常网站伪装、自定义 WS 路径、节点指纹随机化。
 
 ---
 
@@ -35,6 +37,9 @@
 | `PROXYIP` | 否 | 落地反代 IP，直连失败时回退 |
 | `PREFERRED_IPS` | 否 | 优选 IP/域名，逗号或换行分隔，可写 `addr#备注` |
 | `TUIC_PASSWORD` | 否 | TUIC 密码，留空用 UUID |
+| `ADMIN_PATH` | 否 | 隐藏面板到私密路径（如 `/mysecret`），根路径不再暴露面板（抗探测） |
+| `FAKE_WEBSITE` | 否 | 未授权/普通访问反代到的正常网站，伪装防主动探测（如 `https://example.com`） |
+| `WS_PATH` | 否 | 仅该路径接受 VLESS WebSocket，其它路径走伪装 |
 
 ### 方式一：Pages 部署（Git 拉取部署，推荐）
 
@@ -112,6 +117,45 @@ https://<域名>/sub/<UUID>?type=all        # VLESS + TUIC 全部
 4. 默认 IP 被墙时：在 `PREFERRED_IPS` 配置**优选 IP/域名 + 优选端口**（TLS：443/2053/2083/2087/2096）。
 
 ---
+
+## 🔒 WireGuard（WARP · 调用 CF 的 UDP）
+
+WARP 是 Cloudflare 基于 **WireGuard** 的 UDP 服务，这是在 CF 生态里**真正能用 UDP** 的方式（Workers 自身不能直接开 UDP 入站）。
+
+1. 登录面板 → 「WireGuard (WARP)」标签。
+2. 选择 WARP UDP 端点（默认 `engage.cloudflareclient.com:2408`，亦可选 `162.159.192.1:2408` 等 CF 优选）。
+3. 点「生成 WireGuard 节点」：后台实时注册 WARP 账号，生成：
+   - 标准 `.conf`（WireGuard 官方 App / NekoBox 直接导入）
+   - sing-box `wireguard` outbound JSON
+   - `wireguard://` 分享链接 + 二维码
+4. 客户端导入即可使用。需要更强解锁能力可叠加 WARP+。
+
+> 关键参数：`MTU=1280`，`AllowedIPs=0.0.0.0/0, ::/0`，`DNS=1.1.1.1`，Peer 公钥为官方 WARP 公钥。
+
+## 🛡️ 抗探测 / 防侦测
+
+针对部署代理被「主动探测」识别的风险，提供多层伪装（全部可选，按需开启）：
+
+| 措施 | 变量 | 效果 |
+|---|---|---|
+| 隐藏面板 | `ADMIN_PATH=/你的私密路径` | 登录面板只在该路径可达，根路径不暴露任何面板特征 |
+| 伪装回落 | `FAKE_WEBSITE=https://正常站点` | 未授权 / 普通浏览器 / 扫描器访问时，**透明反代到正常网站**，看起来就是个普通站 |
+| WS 路径收敛 | `WS_PATH=/你的隧道路径` | 仅该路径接受 VLESS WebSocket，其它一律走伪装 |
+| 指纹随机化 | 默认 | 节点 `fp=randomized`，建议配合自定义域名 + 优选 IP |
+
+推荐组合：`ADMIN_PATH` + `FAKE_WEBSITE` + `WS_PATH` 同时开启，外部探测只能看到一个正常网站。
+
+## 🧩 平台兼容性
+
+| 平台 / 方式 | 面板·订阅·WireGuard | VLESS 代理内核 |
+|---|---|---|
+| Cloudflare Workers | ✅ | ✅ |
+| Cloudflare Pages | ✅ | ✅ |
+| Docker / VPS（workerd） | ✅ | ✅ |
+| 任意 Node 容器平台（Fly/Railway/Render，用本 Dockerfile） | ✅ | ✅（workerd 运行时） |
+| Deno Deploy / Vercel Edge / Netlify Edge | ✅（面板/订阅/WireGuard） | ⚠️ 受限（VLESS 内核依赖 `cloudflare:sockets`，仅 CF/workerd 提供） |
+
+> VLESS 代理内核需要运行时提供出站 TCP socket（`cloudflare:sockets`），因此在 Cloudflare 或基于 workerd 的环境（含本仓库 Docker 镜像）下可用；面板、订阅生成、WireGuard(WARP) 与配置说明则平台无关。
 
 ## 🛠️ 本地开发
 

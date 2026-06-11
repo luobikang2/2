@@ -24,4 +24,7 @@ CMD ["sh", "-c", "npx wrangler dev --ip 0.0.0.0 --port ${PORT} \
   ${DOMAIN:+--var DOMAIN:${DOMAIN}} \
   ${PROXYIP:+--var PROXYIP:${PROXYIP}} \
   ${PREFERRED_IPS:+--var PREFERRED_IPS:${PREFERRED_IPS}} \
-  ${TUIC_PASSWORD:+--var TUIC_PASSWORD:${TUIC_PASSWORD}}"]
+  ${TUIC_PASSWORD:+--var TUIC_PASSWORD:${TUIC_PASSWORD}} \
+  ${ADMIN_PATH:+--var ADMIN_PATH:${ADMIN_PATH}} \
+  ${FAKE_WEBSITE:+--var FAKE_WEBSITE:${FAKE_WEBSITE}} \
+  ${WS_PATH:+--var WS_PATH:${WS_PATH}}"]

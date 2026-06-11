@@ -12,6 +12,8 @@ import {
   clearCookie,
 } from './auth.js';
 import { loginPage, panelPage } from './html.js';
+import { generateWarpNode, WARP_ENDPOINTS } from './warp.js';
+import { camouflage } from './camouflage.js';
 
 const DEFAULT_UUID = '86c50e3a-5b87-49dd-bd20-03c7f2735e40';
 
@@ -38,15 +40,22 @@ function passwordBackendLabel(env) {
 async function handleFetch(request, env) {
   const userID = (env.UUID && isValidUUID(env.UUID) ? env.UUID : DEFAULT_UUID).toLowerCase();
   const proxyIP = env.PROXYIP || '';
-
-  // 1) VLESS over WebSocket — the actual proxy traffic.
-  if (request.headers.get('Upgrade') === 'websocket') {
-    return vlessOverWSHandler(request, userID, proxyIP);
-  }
+  const wsPath = env.WS_PATH || '';
+  // Admin panel base path. Default '' = served at root. Set ADMIN_PATH=/secret
+  // to hide the panel behind an unguessable path (anti-detection).
+  const adminBase = (env.ADMIN_PATH || '').replace(/\/+$/, '');
 
   const url = new URL(request.url);
   const host = env.DOMAIN || url.hostname;
   const path = url.pathname;
+
+  // 1) VLESS over WebSocket — the actual proxy traffic.
+  if (request.headers.get('Upgrade') === 'websocket') {
+    if (wsPath && !path.startsWith(wsPath.split('?')[0])) {
+      return camouflage(request, env, url);
+    }
+    return vlessOverWSHandler(request, userID, proxyIP);
+  }
 
   // 2) Public subscription: /sub/{uuid}?type=vless|tuic|all&count=10
   if (path.startsWith('/sub/')) {
@@ -55,7 +64,14 @@ async function handleFetch(request, env) {
     const type = url.searchParams.get('type') || 'vless';
     const count = Math.min(Number(url.searchParams.get('count')) || 10, 50);
     const body = buildSubscription(
-      { uuid: subUuid, host, password: env.TUIC_PASSWORD || subUuid, preferred: env.PREFERRED_IPS, count },
+      {
+        uuid: subUuid,
+        host,
+        password: env.TUIC_PASSWORD || subUuid,
+        preferred: env.PREFERRED_IPS,
+        wsPath,
+        count,
+      },
       type,
     );
     return new Response(body, {
@@ -67,52 +83,93 @@ async function handleFetch(request, env) {
     });
   }
 
-  // 3) Login
-  if (path === '/login' && request.method === 'POST') {
+  // 3) Admin area (login page, panel, APIs). When ADMIN_PATH is set, everything
+  //    is served under that prefix and any other request is camouflaged.
+  if (adminBase && path.startsWith(adminBase)) {
+    return handleAdmin(request, env, url, path.slice(adminBase.length) || '/', adminBase, {
+      userID,
+      host,
+      wsPath,
+    });
+  }
+  if (!adminBase) {
+    const adminResp = await handleAdmin(request, env, url, path, '', { userID, host, wsPath });
+    if (adminResp) return adminResp;
+  }
+
+  // 4) Everything else: camouflage (reverse-proxy a real site or benign page).
+  return camouflage(request, env, url);
+}
+
+/**
+ * Handle admin routes. `route` is the path relative to the admin base.
+ * Returns null (only when adminBase is empty) if the route is not an admin route,
+ * so the caller can fall back to camouflage.
+ */
+async function handleAdmin(request, env, url, route, base, ctx) {
+  const { userID, host, wsPath } = ctx;
+
+  if (route === '/login' && request.method === 'POST') {
     const form = await request.formData();
     const password = String(form.get('password') || '');
     const real = await resolvePassword(env);
     if (password && password === real) {
       const token = await createToken(env, real);
-      return html(panelRedirect(), {
+      return html(redirectTo(base + '/'), {
         status: 302,
-        headers: { Location: '/', 'Set-Cookie': sessionCookie(token) },
+        headers: { Location: base + '/', 'Set-Cookie': sessionCookie(token) },
       });
     }
-    return html(loginPage('密码错误，请重试'), { status: 401 });
+    return html(loginPage('密码错误，请重试', base), { status: 401 });
   }
 
-  if (path === '/logout') {
+  if (route === '/logout') {
     return new Response(null, {
       status: 302,
-      headers: { Location: '/', 'Set-Cookie': clearCookie() },
+      headers: { Location: base + '/', 'Set-Cookie': clearCookie() },
     });
   }
 
-  // 4) Authenticated JSON APIs
-  if (path.startsWith('/api/')) {
+  if (route.startsWith('/api/')) {
     if (!(await isAuthed(request, env))) return json({ error: 'unauthorized' }, { status: 401 });
 
-    if (path === '/api/nodes') {
+    if (route === '/api/nodes') {
       const uuid = url.searchParams.get('uuid') || userID;
       if (!isValidUUID(uuid)) return json({ error: 'invalid uuid' }, { status: 400 });
       const count = Math.min(Number(url.searchParams.get('count')) || 10, 50);
       return json(
-        buildNodes({ uuid, host, password: env.TUIC_PASSWORD || uuid, preferred: env.PREFERRED_IPS, count }),
+        buildNodes({
+          uuid,
+          host,
+          password: env.TUIC_PASSWORD || uuid,
+          preferred: env.PREFERRED_IPS,
+          wsPath,
+          count,
+        }),
       );
     }
 
-    if (path === '/api/templates') {
+    if (route === '/api/templates') {
       const uuid = url.searchParams.get('uuid') || userID;
       return json(nodeTemplates({ uuid, host, password: env.TUIC_PASSWORD || uuid }));
     }
 
-    if (path === '/api/test') {
+    if (route === '/api/test') {
       const target = url.searchParams.get('target') || '';
       return json(await tcpLatencyTest(target));
     }
 
-    if (path === '/api/password' && request.method === 'POST') {
+    if (route === '/api/warp') {
+      try {
+        const endpoint = url.searchParams.get('endpoint') || WARP_ENDPOINTS[0];
+        const node = await generateWarpNode({ endpoint });
+        return json({ ok: true, ...node });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message ? e.message : e) }, { status: 502 });
+      }
+    }
+
+    if (route === '/api/password' && request.method === 'POST') {
       const { password } = await request.json().catch(() => ({}));
       if (!password) return json({ error: '密码不能为空' }, { status: 400 });
       const backend = await savePassword(env, password);
@@ -125,19 +182,19 @@ async function handleFetch(request, env) {
     return json({ error: 'not found' }, { status: 404 });
   }
 
-  // 5) Root: panel if authed, else login
-  if (path === '/') {
+  if (route === '/' || route === '') {
     if (await isAuthed(request, env)) {
-      return html(panelPage({ uuid: userID, host, passwordBackend: passwordBackendLabel(env) }));
+      return html(panelPage({ uuid: userID, host, passwordBackend: passwordBackendLabel(env), base }));
     }
-    return html(loginPage());
+    return html(loginPage('', base));
   }
 
-  return new Response('Not Found', { status: 404 });
+  // Unknown admin route. With a hidden base, camouflage it; at root, let caller fall back.
+  return base ? camouflage(request, env, url) : null;
 }
 
-function panelRedirect() {
-  return '<!doctype html><meta http-equiv="refresh" content="0;url=/">跳转中…';
+function redirectTo(loc) {
+  return `<!doctype html><meta http-equiv="refresh" content="0;url=${loc}">跳转中…`;
 }
 
 /**

@@ -22,7 +22,14 @@ export const TLS_PORTS = [443, 8443, 2053, 2083, 2087, 2096];
 // Plain HTTP ports proxied by Cloudflare (only usable when host is not TLS-only).
 export const HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
 
-const WS_PATH = '/?ed=2560';
+const DEFAULT_WS_PATH = '/?ed=2560';
+
+function normalizeWsPath(p) {
+  if (!p) return DEFAULT_WS_PATH;
+  let path = p.startsWith('/') ? p : `/${p}`;
+  if (!path.includes('?')) path += '?ed=2560';
+  return path;
+}
 
 function parsePreferred(envValue) {
   if (!envValue) return DEFAULT_PREFERRED;
@@ -40,7 +47,7 @@ function parsePreferred(envValue) {
 /**
  * Build a single VLESS-over-WS-TLS share link.
  */
-export function vlessLink({ uuid, address, port, host, name }) {
+export function vlessLink({ uuid, address, port, host, name, wsPath }) {
   const params = new URLSearchParams({
     encryption: 'none',
     security: 'tls',
@@ -49,7 +56,7 @@ export function vlessLink({ uuid, address, port, host, name }) {
     alpn: 'h2,http/1.1',
     type: 'ws',
     host,
-    path: WS_PATH,
+    path: wsPath || DEFAULT_WS_PATH,
   });
   return `vless://${uuid}@${address}:${port}?${params.toString()}#${encodeURIComponent(name)}`;
 }
@@ -79,6 +86,7 @@ export function buildNodes(cfg) {
   const password = cfg.password || uuid;
   const count = cfg.count || 10;
   const preferred = parsePreferred(cfg.preferred);
+  const wsPath = normalizeWsPath(cfg.wsPath);
 
   const vless = [];
   for (let i = 0; i < count; i++) {
@@ -90,7 +98,7 @@ export function buildNodes(cfg) {
       name,
       address: p.addr,
       port,
-      link: vlessLink({ uuid, address: p.addr, port, host, name }),
+      link: vlessLink({ uuid, address: p.addr, port, host, name, wsPath }),
     });
   }
 

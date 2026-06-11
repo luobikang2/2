@@ -332,7 +332,13 @@ var DEFAULT_PREFERRED = [
   { addr: "www.csgo.com", note: "\u4F18\u9009\u57DF\u540D" }
 ];
 var TLS_PORTS = [443, 8443, 2053, 2083, 2087, 2096];
-var WS_PATH = "/?ed=2560";
+var DEFAULT_WS_PATH = "/?ed=2560";
+function normalizeWsPath(p) {
+  if (!p) return DEFAULT_WS_PATH;
+  let path = p.startsWith("/") ? p : `/${p}`;
+  if (!path.includes("?")) path += "?ed=2560";
+  return path;
+}
 function parsePreferred(envValue) {
   if (!envValue) return DEFAULT_PREFERRED;
   const items = String(envValue).split(/[\n,]+/).map((s) => s.trim()).filter(Boolean).map((s) => {
@@ -341,7 +347,7 @@ function parsePreferred(envValue) {
   });
   return items.length ? items : DEFAULT_PREFERRED;
 }
-function vlessLink({ uuid, address, port, host, name }) {
+function vlessLink({ uuid, address, port, host, name, wsPath }) {
   const params = new URLSearchParams({
     encryption: "none",
     security: "tls",
@@ -350,7 +356,7 @@ function vlessLink({ uuid, address, port, host, name }) {
     alpn: "h2,http/1.1",
     type: "ws",
     host,
-    path: WS_PATH
+    path: wsPath || DEFAULT_WS_PATH
   });
   return `vless://${uuid}@${address}:${port}?${params.toString()}#${encodeURIComponent(name)}`;
 }
@@ -370,6 +376,7 @@ function buildNodes(cfg) {
   const password = cfg.password || uuid;
   const count = cfg.count || 10;
   const preferred = parsePreferred(cfg.preferred);
+  const wsPath = normalizeWsPath(cfg.wsPath);
   const vless = [];
   for (let i = 0; i < count; i++) {
     const p = preferred[i % preferred.length];
@@ -380,7 +387,7 @@ function buildNodes(cfg) {
       name,
       address: p.addr,
       port,
-      link: vlessLink({ uuid, address: p.addr, port, host, name })
+      link: vlessLink({ uuid, address: p.addr, port, host, name, wsPath })
     });
   }
   const tuic = [];
@@ -592,7 +599,7 @@ padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:non
 .foot{color:var(--muted);text-align:center;margin:26px 0;font-size:12px}
 `;
 var QR_CDN = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
-function loginPage(error = "") {
+function loginPage(error = "", base = "") {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>\u767D\u6781\u72D0 \xB7 \u767B\u5F55</title><style>${STYLE}</style></head>
@@ -604,7 +611,7 @@ function loginPage(error = "") {
   </div>
   <div class="banner">\u5317 \u6781 \u6B22 \u8FCE \u4F60</div>
   ${error ? `<div style="color:var(--err);text-align:center;margin-top:10px">${error}</div>` : ""}
-  <form method="POST" action="/login">
+  <form method="POST" action="${base}/login">
     <label>\u767B\u5F55\u5BC6\u7801</label>
     <input type="password" name="password" placeholder="\u8BF7\u8F93\u5165\u64CD\u4F5C\u9762\u677F\u5BC6\u7801" required autofocus>
     <div class="row" style="margin-top:16px">
@@ -629,7 +636,7 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 </script>
 </body></html>`;
 }
-function panelPage({ uuid, host, passwordBackend }) {
+function panelPage({ uuid, host, passwordBackend, base = "" }) {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>\u767D\u6781\u72D0 \xB7 \u64CD\u4F5C\u9762\u677F</title><style>${STYLE}</style>
@@ -640,7 +647,7 @@ function panelPage({ uuid, host, passwordBackend }) {
     <div class="brand"><div class="logo">\u{1F98A}</div>
       <div><h1>\u767D\u6781\u72D0</h1><div class="banner" style="text-align:left;margin:2px 0 0">\u5317 \u6781 \u6B22 \u8FCE \u4F60</div></div>
     </div>
-    <a class="btn ghost sm" href="/logout">\u9000\u51FA\u767B\u5F55</a>
+    <a class="btn ghost sm" href="${base}/logout">\u9000\u51FA\u767B\u5F55</a>
   </div>
 
   <div class="card">
@@ -654,6 +661,7 @@ function panelPage({ uuid, host, passwordBackend }) {
 
   <div class="tabs">
     <div class="tab active" data-pane="nodes" onclick="tab(this)">\u8282\u70B9 (VLESS/TUIC)</div>
+    <div class="tab" data-pane="wg" onclick="tab(this)">WireGuard (WARP)</div>
     <div class="tab" data-pane="custom" onclick="tab(this)">\u81EA\u5B9A\u4E49\u8282\u70B9\u6A21\u677F</div>
     <div class="tab" data-pane="docs" onclick="tab(this)">\u914D\u7F6E\u8BF4\u660E</div>
     <div class="tab" data-pane="settings" onclick="tab(this)">\u8BBE\u7F6E</div>
@@ -668,6 +676,18 @@ function panelPage({ uuid, host, passwordBackend }) {
         <button class="btn ghost" onclick="testAll()">\u6D4B\u8BD5\u5168\u90E8\u8FDE\u901A/\u5EF6\u8FDF</button>
       </div>
       <div id="nodeList"></div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-wg">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div style="flex:1"><label>WARP UDP \u7AEF\u70B9\uFF08\u8C03\u7528 CF \u7684 UDP\uFF09</label>
+          <select id="wgEndpoint"></select></div>
+        <button onclick="genWarp()">\u751F\u6210 WireGuard \u8282\u70B9</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:8px">\u901A\u8FC7 Cloudflare WARP\uFF08\u57FA\u4E8E WireGuard \u7684 UDP \u670D\u52A1\uFF09\u5B9E\u65F6\u6CE8\u518C\u8D26\u53F7\u5E76\u751F\u6210\u53EF\u7528\u8282\u70B9\u3002\u5BA2\u6237\u7AEF\uFF1AWireGuard \u5B98\u65B9 / NekoBox / sing-box / Hiddify\u3002</div>
+      <div id="wgResult"></div>
     </div>
   </div>
 
@@ -699,6 +719,7 @@ function panelPage({ uuid, host, passwordBackend }) {
 
 <script>
 const HOST=${JSON.stringify(host)};
+const BASE=${JSON.stringify(base)};
 function tab(el){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
 document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
 document.getElementById('pane-'+el.dataset.pane).classList.add('active');}
@@ -719,7 +740,7 @@ function renderSub(){
 async function loadNodes(){
   const uuid=uuidVal();const count=document.getElementById('inCount').value;
   document.getElementById('curUuid').textContent=uuid;renderSub();
-  const r=await fetch('/api/nodes?uuid='+encodeURIComponent(uuid)+'&count='+count);
+  const r=await fetch(BASE+'/api/nodes?uuid='+encodeURIComponent(uuid)+'&count='+count);
   const data=await r.json();
   const all=[...data.vless,...data.tuic];
   document.getElementById('nodeList').innerHTML=all.map((n,i)=>nodeHtml(n,i)).join('');
@@ -738,7 +759,7 @@ function nodeHtml(n,i){
 async function testOne(i){
   const n=window.__nodes[i];const el=document.getElementById('lat'+i);el.textContent='\u6D4B\u8BD5\u4E2D\u2026';
   try{
-    const r=await fetch('/api/test?target='+encodeURIComponent(n.address+':'+n.port));
+    const r=await fetch(BASE+'/api/test?target='+encodeURIComponent(n.address+':'+n.port));
     const d=await r.json();
     el.textContent=d.ok?(d.latency+' ms'):'\u5931\u8D25';
     el.style.color=d.ok?(d.latency<300?'var(--ok)':'var(--warn)'):'var(--err)';
@@ -750,8 +771,31 @@ function showQr(i){const n=window.__nodes[i];document.getElementById('qrCard').s
   const box=document.getElementById('qr');box.innerHTML='';new QRCode(box,{text:n.link,width:200,height:200});}
 function closeQr(){document.getElementById('qrCard').style.display='none';}
 
+const WARP_ENDPOINTS=['engage.cloudflareclient.com:2408','162.159.192.1:2408','162.159.193.10:2408','188.114.96.1:2408','188.114.97.1:2408'];
+document.getElementById('wgEndpoint').innerHTML=WARP_ENDPOINTS.map(e=>'<option>'+e+'</option>').join('');
+async function genWarp(){
+  const ep=document.getElementById('wgEndpoint').value;const box=document.getElementById('wgResult');
+  box.innerHTML='<div class="muted" style="margin-top:10px">\u6B63\u5728\u6CE8\u518C WARP \u8D26\u53F7\u5E76\u751F\u6210\u2026</div>';
+  try{
+    const r=await fetch(BASE+'/api/warp?endpoint='+encodeURIComponent(ep));const d=await r.json();
+    if(!d.ok){box.innerHTML='<div style="color:var(--err);margin-top:10px">\u751F\u6210\u5931\u8D25\uFF1A'+(d.error||'')+'</div>';return;}
+    window.__wg=d;
+    box.innerHTML=
+      '<div class="node" style="margin-top:12px"><div class="top"><b>WireGuard \u914D\u7F6E (.conf)</b>'+
+      '<div class="row"><button class="btn ghost sm" onclick="copyText(window.__wg.conf)">\u590D\u5236conf</button>'+
+      '<button class="btn ghost sm" onclick="copyText(window.__wg.link)">\u590D\u5236\u94FE\u63A5</button>'+
+      '<button class="btn ghost sm" onclick="wgQr()">\u4E8C\u7EF4\u7801</button></div></div>'+
+      '<pre>'+d.conf+'</pre></div>'+
+      '<div class="node"><div class="top"><b>sing-box outbound</b><button class="btn ghost sm" onclick="copyText(window.__wg.singbox)">\u590D\u5236</button></div><pre>'+d.singbox+'</pre></div>'+
+      '<div class="node"><b>wireguard:// \u94FE\u63A5</b><div class="lk">'+d.link+'</div></div>';
+    toast('\u5DF2\u751F\u6210 WireGuard \u8282\u70B9');
+  }catch(e){box.innerHTML='<div style="color:var(--err)">\u8BF7\u6C42\u5931\u8D25</div>';}
+}
+function wgQr(){document.getElementById('qrCard').style.display='block';
+  const box=document.getElementById('qr');box.innerHTML='';new QRCode(box,{text:window.__wg.conf,width:220,height:220});}
+
 async function loadTemplates(){
-  const r=await fetch('/api/templates?uuid='+encodeURIComponent(uuidVal()));
+  const r=await fetch(BASE+'/api/templates?uuid='+encodeURIComponent(uuidVal()));
   const tpls=await r.json();
   document.getElementById('tplBox').innerHTML=tpls.map(t=>
     '<div class="node"><div class="top"><b>'+t.title+'</b><button class="btn ghost sm" onclick="copyText(\\''+t.example.replace(/'/g,"\\\\'")+'\\')">\u590D\u5236\u6A21\u677F</button></div>'+
@@ -776,7 +820,18 @@ UUID: \u4F60\u7684 UUID   password: \u4F60\u7684 UUID(\u6216\u81EA\u5B9A\u4E49)
 alpn: h3   congestion_control: bbr   udp_relay_mode: native
 \u5185\u6838: \u5FC5\u987B\u4F7F\u7528 sing-box\uFF08Xray \u4E0D\u652F\u6301 TUIC\uFF09</pre>
 <div class="muted">\u26A0\uFE0F Cloudflare Workers/Pages \u4E0D\u652F\u6301 QUIC \u5165\u7AD9\uFF0CTUIC \u8282\u70B9\u9700\u914D\u5408\u81EA\u5EFA/\u7B2C\u4E09\u65B9 QUIC \u540E\u7AEF\uFF1B\u8BA2\u9605\u91CC\u63D0\u4F9B TUIC \u94FE\u63A5\u4EE5\u4FBF\u517C\u5BB9\u591A\u534F\u8BAE\u5BA2\u6237\u7AEF\u3002</div>
-<h4>\u2462 \u56FD\u5185\u8BBF\u95EE Google \u7B49\u5916\u7F51</h4>
+<h4>\u2462 WireGuard\uFF08WARP\uFF0C\u8C03\u7528 CF \u7684 UDP\uFF09</h4>
+<pre>\u5728\u300CWireGuard (WARP)\u300D\u6807\u7B7E\u70B9\u300C\u751F\u6210\u300D\u2192 \u5F97\u5230 .conf / sing-box / wireguard:// \u94FE\u63A5
+\u5BA2\u6237\u7AEF: WireGuard \u5B98\u65B9App / NekoBox / sing-box / Hiddify
+\u7AEF\u70B9(Endpoint): engage.cloudflareclient.com:2408 \u6216 162.159.192.1:2408 (CF \u7684 UDP)
+MTU: 1280   AllowedIPs: 0.0.0.0/0, ::/0   DNS: 1.1.1.1
+WARP \u4E3A\u57FA\u4E8E WireGuard \u7684 UDP \u670D\u52A1\uFF0C\u8282\u70B9\u771F\u5B9E\u53EF\u7528\uFF1B\u5982\u9700\u89E3\u9501\u66F4\u591A\u53EF\u53E0\u52A0 WARP+\u3002</pre>
+<h4>\u2463 \u6297\u63A2\u6D4B/\u9632\u4FA6\u6D4B</h4>
+<pre>ADMIN_PATH=/\u4F60\u7684\u79C1\u5BC6\u8DEF\u5F84   \u9690\u85CF\u767B\u5F55\u9762\u677F\uFF0C\u6839\u8DEF\u5F84\u4E0D\u66B4\u9732
+FAKE_WEBSITE=https://example.com   \u672A\u6388\u6743\u8BBF\u95EE\u53CD\u4EE3\u5230\u6B63\u5E38\u7F51\u7AD9(\u9632\u4E3B\u52A8\u63A2\u6D4B)
+WS_PATH=/\u4F60\u7684ws\u8DEF\u5F84   \u4EC5\u8BE5\u8DEF\u5F84\u63A5\u53D7 WS\uFF0C\u5176\u5B83\u4F2A\u88C5
+\u8282\u70B9\u6307\u7EB9 fp=randomized\uFF1B\u5EFA\u8BAE\u7528\u81EA\u5B9A\u4E49\u57DF\u540D + \u4F18\u9009IP</pre>
+<h4>\u2464 \u56FD\u5185\u8BBF\u95EE Google \u7B49\u5916\u7F51</h4>
 <pre>1) \u90E8\u7F72\u672C\u9879\u76EE\u5230 Cloudflare\uFF08Pages/Workers\uFF09
 2) \u8BBE\u7F6E UUID \u73AF\u5883\u53D8\u91CF\uFF1B\u5982\u6709\u81EA\u5B9A\u4E49\u57DF\u540D\u89E3\u6790\u5230 CF \u66F4\u7A33
 3) \u5BFC\u5165\u300CVLESS \u8BA2\u9605\u300D\u5230\u5BA2\u6237\u7AEF\uFF0C\u9009\u5EF6\u8FDF\u4F4E\u7684\u8282\u70B9
@@ -785,13 +840,184 @@ document.getElementById('docsBox').innerHTML=DOCS;
 
 async function changePw(){
   const pw=document.getElementById('newPw').value;if(!pw)return toast('\u8BF7\u8F93\u5165\u65B0\u5BC6\u7801');
-  const r=await fetch('/api/password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:pw})});
+  const r=await fetch(BASE+'/api/password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:pw})});
   const d=await r.json();toast(d.ok?('\u5DF2\u4FDD\u5B58\u5230 '+d.backend):(d.error||'\u4FDD\u5B58\u5931\u8D25'));
 }
 
 loadNodes();loadTemplates();renderSub();
 </script>
 </body></html>`;
+}
+
+// src/warp.js
+var WARP_PEER_PUBKEY = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
+var WARP_ENDPOINTS = [
+  "engage.cloudflareclient.com:2408",
+  "162.159.192.1:2408",
+  "162.159.193.10:2408",
+  "188.114.96.1:2408",
+  "188.114.97.1:2408"
+];
+function toB64(bytes) {
+  let bin = "";
+  bytes.forEach((b) => {
+    bin += String.fromCharCode(b);
+  });
+  return btoa(bin);
+}
+function fromB64(b64) {
+  const bin = atob(b64);
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+async function generateKeyPair() {
+  const kp = await crypto.subtle.generateKey({ name: "X25519" }, true, ["deriveBits"]);
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+  const rawPriv = pkcs8.slice(pkcs8.length - 32);
+  const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+  return { privateKey: toB64(rawPriv), publicKey: toB64(rawPub) };
+}
+async function registerWarp(publicKeyB64) {
+  const res = await fetch("https://api.cloudflareclient.com/v0a2158/reg", {
+    method: "POST",
+    headers: {
+      "CF-Client-Version": "a-6.11-2223",
+      "User-Agent": "okhttp/3.12.1",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      key: publicKeyB64,
+      install_id: "",
+      fcm_token: "",
+      tos: (/* @__PURE__ */ new Date()).toISOString(),
+      model: "PC",
+      serial_number: "",
+      locale: "en_US"
+    })
+  });
+  if (!res.ok) {
+    throw new Error(`WARP \u6CE8\u518C\u5931\u8D25: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+function reservedFromClientId(clientId) {
+  try {
+    const bytes = fromB64(clientId);
+    return [bytes[0], bytes[1], bytes[2]];
+  } catch {
+    return [0, 0, 0];
+  }
+}
+function wgConf({ privateKey, v4, v6, peerPub, endpoint }) {
+  return `[Interface]
+PrivateKey = ${privateKey}
+Address = ${v4}/32, ${v6}/128
+DNS = 1.1.1.1, 2606:4700:4700::1111
+MTU = 1280
+
+[Peer]
+PublicKey = ${peerPub}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = ${endpoint}
+`;
+}
+function singboxOutbound({ privateKey, v4, v6, peerPub, endpoint, reserved, name }) {
+  const [host, port] = endpoint.split(":");
+  return JSON.stringify(
+    {
+      type: "wireguard",
+      tag: name,
+      server: host,
+      server_port: Number(port),
+      local_address: [`${v4}/32`, `${v6}/128`],
+      private_key: privateKey,
+      peer_public_key: peerPub,
+      reserved,
+      mtu: 1280
+    },
+    null,
+    2
+  );
+}
+function wgLink({ privateKey, v4, v6, peerPub, endpoint, reserved, name }) {
+  const [host, port] = endpoint.split(":");
+  const params = new URLSearchParams({
+    address: `${v4}/32,${v6}/128`,
+    publickey: peerPub,
+    reserved: reserved.join(","),
+    mtu: "1280"
+  });
+  return `wireguard://${encodeURIComponent(privateKey)}@${host}:${port}/?${params.toString()}#${encodeURIComponent(name)}`;
+}
+async function generateWarpNode(opts = {}) {
+  const endpoint = opts.endpoint && WARP_ENDPOINTS.includes(opts.endpoint) ? opts.endpoint : WARP_ENDPOINTS[0];
+  const name = opts.name || "\u767D\u6781\u72D0-WireGuard-WARP";
+  const { privateKey, publicKey } = await generateKeyPair();
+  const reg = await registerWarp(publicKey);
+  const iface = reg.config && reg.config.interface;
+  const v4 = iface && iface.addresses && iface.addresses.v4;
+  const v6 = iface && iface.addresses && iface.addresses.v6;
+  const clientId = reg.config && reg.config.client_id;
+  const peerPub = reg.config && reg.config.peers && reg.config.peers[0] && reg.config.peers[0].public_key || WARP_PEER_PUBKEY;
+  if (!v4 || !v6) throw new Error("WARP \u6CE8\u518C\u8FD4\u56DE\u6570\u636E\u5F02\u5E38");
+  const reserved = reservedFromClientId(clientId);
+  const fields = { privateKey, publicKey, v4, v6, peerPub, endpoint, reserved, name };
+  return {
+    ...fields,
+    conf: wgConf(fields),
+    singbox: singboxOutbound(fields),
+    link: wgLink(fields),
+    endpoints: WARP_ENDPOINTS
+  };
+}
+
+// src/camouflage.js
+var DEFAULT_PAGE = `<!doctype html><html><head><meta charset="utf-8">
+<title>Welcome to nginx!</title><style>body{width:35em;margin:0 auto;
+font-family:Tahoma,Verdana,Arial,sans-serif}</style></head><body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+<p><em>Thank you for using nginx.</em></p></body></html>`;
+async function camouflage(request, env, url) {
+  const target = env.FAKE_WEBSITE;
+  if (target) {
+    try {
+      const base = target.startsWith("http") ? target : `https://${target}`;
+      const upstream = new URL(base);
+      const proxied = new URL(url.pathname + url.search, upstream.origin);
+      const res = await fetch(proxied.toString(), {
+        method: request.method,
+        headers: filterHeaders(request.headers, upstream.host),
+        body: ["GET", "HEAD"].includes(request.method) ? void 0 : request.body,
+        redirect: "follow"
+      });
+      const headers = new Headers(res.headers);
+      headers.delete("content-security-policy");
+      headers.delete("content-security-policy-report-only");
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+      return new Response(res.body, { status: res.status, headers });
+    } catch {
+    }
+  }
+  return new Response(DEFAULT_PAGE, {
+    status: 200,
+    headers: { "content-type": "text/html;charset=utf-8", server: "nginx" }
+  });
+}
+function filterHeaders(headers, host) {
+  const out = new Headers();
+  for (const [k, v] of headers) {
+    const lk = k.toLowerCase();
+    if (lk === "host" || lk === "cf-connecting-ip" || lk.startsWith("cf-")) continue;
+    out.set(k, v);
+  }
+  out.set("host", host);
+  return out;
 }
 
 // src/index.js
@@ -816,19 +1042,31 @@ function passwordBackendLabel(env) {
 async function handleFetch(request, env) {
   const userID = (env.UUID && isValidUUID(env.UUID) ? env.UUID : DEFAULT_UUID).toLowerCase();
   const proxyIP = env.PROXYIP || "";
-  if (request.headers.get("Upgrade") === "websocket") {
-    return vlessOverWSHandler(request, userID, proxyIP);
-  }
+  const wsPath = env.WS_PATH || "";
+  const adminBase = (env.ADMIN_PATH || "").replace(/\/+$/, "");
   const url = new URL(request.url);
   const host = env.DOMAIN || url.hostname;
   const path = url.pathname;
+  if (request.headers.get("Upgrade") === "websocket") {
+    if (wsPath && !path.startsWith(wsPath.split("?")[0])) {
+      return camouflage(request, env, url);
+    }
+    return vlessOverWSHandler(request, userID, proxyIP);
+  }
   if (path.startsWith("/sub/")) {
     const subUuid = path.slice("/sub/".length).split("/")[0];
     if (!isValidUUID(subUuid)) return new Response("invalid uuid", { status: 400 });
     const type = url.searchParams.get("type") || "vless";
     const count = Math.min(Number(url.searchParams.get("count")) || 10, 50);
     const body = buildSubscription(
-      { uuid: subUuid, host, password: env.TUIC_PASSWORD || subUuid, preferred: env.PREFERRED_IPS, count },
+      {
+        uuid: subUuid,
+        host,
+        password: env.TUIC_PASSWORD || subUuid,
+        preferred: env.PREFERRED_IPS,
+        wsPath,
+        count
+      },
       type
     );
     return new Response(body, {
@@ -839,44 +1077,75 @@ async function handleFetch(request, env) {
       }
     });
   }
-  if (path === "/login" && request.method === "POST") {
+  if (adminBase && path.startsWith(adminBase)) {
+    return handleAdmin(request, env, url, path.slice(adminBase.length) || "/", adminBase, {
+      userID,
+      host,
+      wsPath
+    });
+  }
+  if (!adminBase) {
+    const adminResp = await handleAdmin(request, env, url, path, "", { userID, host, wsPath });
+    if (adminResp) return adminResp;
+  }
+  return camouflage(request, env, url);
+}
+async function handleAdmin(request, env, url, route, base, ctx) {
+  const { userID, host, wsPath } = ctx;
+  if (route === "/login" && request.method === "POST") {
     const form = await request.formData();
     const password = String(form.get("password") || "");
     const real = await resolvePassword(env);
     if (password && password === real) {
       const token = await createToken(env, real);
-      return html(panelRedirect(), {
+      return html(redirectTo(base + "/"), {
         status: 302,
-        headers: { Location: "/", "Set-Cookie": sessionCookie(token) }
+        headers: { Location: base + "/", "Set-Cookie": sessionCookie(token) }
       });
     }
-    return html(loginPage("\u5BC6\u7801\u9519\u8BEF\uFF0C\u8BF7\u91CD\u8BD5"), { status: 401 });
+    return html(loginPage("\u5BC6\u7801\u9519\u8BEF\uFF0C\u8BF7\u91CD\u8BD5", base), { status: 401 });
   }
-  if (path === "/logout") {
+  if (route === "/logout") {
     return new Response(null, {
       status: 302,
-      headers: { Location: "/", "Set-Cookie": clearCookie() }
+      headers: { Location: base + "/", "Set-Cookie": clearCookie() }
     });
   }
-  if (path.startsWith("/api/")) {
+  if (route.startsWith("/api/")) {
     if (!await isAuthed(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    if (path === "/api/nodes") {
+    if (route === "/api/nodes") {
       const uuid = url.searchParams.get("uuid") || userID;
       if (!isValidUUID(uuid)) return json({ error: "invalid uuid" }, { status: 400 });
       const count = Math.min(Number(url.searchParams.get("count")) || 10, 50);
       return json(
-        buildNodes({ uuid, host, password: env.TUIC_PASSWORD || uuid, preferred: env.PREFERRED_IPS, count })
+        buildNodes({
+          uuid,
+          host,
+          password: env.TUIC_PASSWORD || uuid,
+          preferred: env.PREFERRED_IPS,
+          wsPath,
+          count
+        })
       );
     }
-    if (path === "/api/templates") {
+    if (route === "/api/templates") {
       const uuid = url.searchParams.get("uuid") || userID;
       return json(nodeTemplates({ uuid, host, password: env.TUIC_PASSWORD || uuid }));
     }
-    if (path === "/api/test") {
+    if (route === "/api/test") {
       const target = url.searchParams.get("target") || "";
       return json(await tcpLatencyTest(target));
     }
-    if (path === "/api/password" && request.method === "POST") {
+    if (route === "/api/warp") {
+      try {
+        const endpoint = url.searchParams.get("endpoint") || WARP_ENDPOINTS[0];
+        const node = await generateWarpNode({ endpoint });
+        return json({ ok: true, ...node });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message ? e.message : e) }, { status: 502 });
+      }
+    }
+    if (route === "/api/password" && request.method === "POST") {
       const { password } = await request.json().catch(() => ({}));
       if (!password) return json({ error: "\u5BC6\u7801\u4E0D\u80FD\u4E3A\u7A7A" }, { status: 400 });
       const backend = await savePassword(env, password);
@@ -887,16 +1156,16 @@ async function handleFetch(request, env) {
     }
     return json({ error: "not found" }, { status: 404 });
   }
-  if (path === "/") {
+  if (route === "/" || route === "") {
     if (await isAuthed(request, env)) {
-      return html(panelPage({ uuid: userID, host, passwordBackend: passwordBackendLabel(env) }));
+      return html(panelPage({ uuid: userID, host, passwordBackend: passwordBackendLabel(env), base }));
     }
-    return html(loginPage());
+    return html(loginPage("", base));
   }
-  return new Response("Not Found", { status: 404 });
+  return base ? camouflage(request, env, url) : null;
 }
-function panelRedirect() {
-  return '<!doctype html><meta http-equiv="refresh" content="0;url=/">\u8DF3\u8F6C\u4E2D\u2026';
+function redirectTo(loc) {
+  return `<!doctype html><meta http-equiv="refresh" content="0;url=${loc}">\u8DF3\u8F6C\u4E2D\u2026`;
 }
 async function tcpLatencyTest(target) {
   const [host, portStr] = target.split(":");
