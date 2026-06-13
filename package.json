@@ -1,0 +1,23 @@
+{
+  "name": "baijihu-cf-vpn",
+  "version": "1.0.0",
+  "description": "白极狐 · 基于 Cloudflare 的 VLESS/TUIC 代理面板 (Pages/Workers/Docker)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev --ip 0.0.0.0 --port 8787",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "keywords": ["cloudflare", "workers", "pages", "vless", "tuic", "vpn", "proxy"],
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "eslint": "^9.13.0",
+    "prettier": "^3.3.3",
+    "wrangler": "^3.80.0"
+  }
+}
