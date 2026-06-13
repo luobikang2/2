@@ -1,21 +1,21 @@
-# 🦊 白极狐 · Cloudflare 代理面板（VLESS / TUIC）
-
+#🦊白极狐cloudflare替代面板(VLESS/TUIC)
+由于技术原因，目前仅支持节点模板生成
 > 卷首语：**北极欢迎你**
 
-基于 **Cloudflare**（及同类边缘平台）把节点服务器搭起来，实现可用的代理 / VPN：中国大陆可借**优选 IP/域名**访问 Google 等外网。带**登录面板**、**一键生成订阅与二维码**、**节点连通/延迟测试**、**自定义节点模板**与**精简配置说明**。
+基于 **CloudFlare**（及同类边缘平台）把节点服务器搭起来，实现可用的代理 / VPN：中国大陆可借**优选IP/域名**访问谷歌等外网。带**登录面板**、**一键生成订阅与二维码**、**节点连通/延迟测试**、**自定义节点模板**与**精简配置说明**。
 
-- **VLESS（主力）**：VLESS + WebSocket + TLS，在 Cloudflare Workers/Pages 上**真正可用**。
-- **TUIC（辅助）**：生成标准 TUIC 链接，兼容 sing-box 等客户端。
-  > ⚠️ TUIC 基于 QUIC/UDP，**Cloudflare Workers/Pages 不支持 QUIC 入站**，TUIC 节点需配合支持 QUIC 的后端（自建/VPS，见 Docker 部署）。订阅中提供 TUIC 链接是为了多协议客户端兼容。
-- **WireGuard（WARP，调用 CF 的 UDP）**：面板一键注册 Cloudflare WARP（基于 WireGuard 的 UDP 服务）账号，生成**真实可用**的 `.conf` / sing-box / `wireguard://` 节点与二维码。
+- **Vless（主力）**：Vless+WebSocket+TLS，在Cloudflare Workers/Pages上**真正可用**。
+- **TUIC(辅助)**：生成标准TUIC链接，兼容sing-box等客户端。
+  > ⚠️ TUIC 基于 QUIC/UDP，**CloudFlare Workers/Pages不支持QUIC入站**，TUIC节点需配合支持QUIC的后端(自建/VPS，见Docker部署）。订阅中提供TUIC链接是为了多协议客户端兼容.
+- **WireGuard(WARP，调用CF的UDP)**：面板一键注册CloudFlare WARP（基于WireGuard的UDP服务)账号，生成**真实可用**的`.conf`/sing-box/`WireGuard://` 节点与二维码。
 - **抗探测/防侦测**：可隐藏面板路径、未授权访问反代到正常网站伪装、自定义 WS 路径、节点指纹随机化。
 
 ---
 
-## ✨ 功能
+##✨  功能
 
-- 登录界面：标题「白极狐」、卷首「北极欢迎你」，**可一键生成 UUID**，密码登录。
-- 密码存储：**D1 → KV → 环境变量** 优先级，支持面板在线改密（D1/KV）。
+-登录界面：标题「白极狐」、卷首「北极欢迎你」，**可一键生成UUID**，密码登录。
+- 密码存储：**D1→KV→环境变量** 优先级，支持面板在线改密（D1/KV）。
 - 变量 = **UUID + 绑定域名**；设置 UUID 后**自动生成 VLESS + TUIC 订阅链接、节点、二维码**。
 - 一条订阅链接**生成 10 个节点**（可调 1–50），覆盖多优选 IP/域名 + 多端口，兼容各种设备。
 - 自定义节点模板（VLESS/优选IP/TUIC）。
